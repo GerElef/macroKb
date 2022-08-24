@@ -30,7 +30,8 @@ class Macros:
 
     """Macros to execute when KEY_HOLD is triggered."""
     MACROS_HOLD = {
-
+        ("KEY_GRAVE", "KEY_1"): lambda: print("Holding!!"),
+        ("KEY_GRAVE", ): lambda: print("amogus")
     }
 
     """If CONTROLLER is not defined, the default controller will be used for this keyboard."""

@@ -63,61 +63,87 @@ class Controller(ABC):
 # noinspection PyMissingConstructor
 class DefaultController(Controller):
     def __init__(self, mode):
-        self.down_keys: List[Tuple[float, Any]] = []
-        self.hold_keys = []  # TODO: implement hold keys/macros
-        self.up_keys: List[Tuple[float, Any]] = []
+        self.down_keys: List[Any] = []
+        self.down_keys_time: List[float] = []
+        self.hold_keys: List[Any] = []
+        self.up_keys: List[Any] = []
+        self.up_keys_time: List[float] = []
 
-        self.duration = .04  # (40ms)
+        self.duration = .06  # (60ms)
         self.mode = mode
 
     def execute(self, key):
         # remove old keys and add the new one
-        self.remove_old(self.down_keys)
-        self.remove_old(self.up_keys)
-
-        self.add_to_lists(key)
+        self.__transfer_key_states()
+        self.__add_to_lists(key)
+        print(self.down_keys)
+        print(self.hold_keys)
+        print(self.up_keys)
 
         if key.keystate == key.key_down:
             self.__handle_down()
         if key.keystate == key.key_hold:
-            pass  # TODO
+            self.__handle_hold()
         if key.keystate == key.key_up:
             self.__handle_up()
 
+    def __transfer_key_states(self):
+        # if down, but too old, and not UP, make them go to hold
+        # append only the names, no time list needed for hold
+        self.hold_keys += self.__remove_old(self.down_keys, self.down_keys_time)[0]
+        # get the intersection between hold & up and remove the common elements from hold
+        ic = set(self.hold_keys).intersection(self.up_keys)
+        self.hold_keys[:] = [k for k in self.hold_keys if k not in ic]
+        self.__remove_old(self.up_keys, self.up_keys_time)
+
+    def __add_to_lists(self, key):
+        if key.keystate == key.key_down:
+            if type(key.keycode) is list:
+                for code in key.keycode:
+                    self.down_keys.append(code)
+                    self.down_keys_time.append(time())
+            else:
+                self.down_keys.append(key.keycode)
+                self.down_keys_time.append(time())
+        if key.keystate == key.key_up:
+            if type(key.keycode) is list:
+                for code in key.keycode:
+                    self.up_keys.append(code)
+                    self.up_keys_time.append(time())
+            else:
+                self.up_keys.append(key.keycode)
+                self.up_keys_time.append(time())
+
+    def __remove_old(self, l, ll):
+        tr: List = []  # to remove
+        tr_t: List = []  # to remove (name)
+        for n, t in zip(l, ll):
+            if time() - t > self.duration:
+                tr.append(n)
+                tr_t.append(t)
+
+        [l.remove(t) for t in tr]
+        [ll.remove(n) for n in tr_t]
+
+        return tr, tr_t
+
     def __handle_down(self):
-        lst = [k for t, k in self.down_keys]  # extract the key names
-        do = self.mode.check_bind_down('/'.join(lst))
+        do = self.mode.check_bind_down('/'.join(self.down_keys))
+        print("DN " + '/'.join(self.down_keys))
+        if do:
+            do.action()
+
+    def __handle_hold(self):
+        do = self.mode.check_bind_hold('/'.join(self.hold_keys))
+        print("HLD " + '/'.join(self.hold_keys))
         if do:
             do.action()
 
     def __handle_up(self):
-        lst = [k for t, k in self.up_keys]  # extract the key names
-        do = self.mode.check_bind_up('/'.join(lst))
+        do = self.mode.check_bind_up('/'.join(self.up_keys))
+        print("UP " + '/'.join(self.up_keys))
         if do:
             do.action()
-
-    def add_to_lists(self, key):
-        if key.keystate == key.key_down:
-            if type(key.keycode) is list:
-                for code in key.keycode:
-                    self.down_keys.append((time(), code))
-            else:
-                self.down_keys.append((time(), key.keycode))
-        if key.keystate == key.key_hold:
-            pass
-        if key.keystate == key.key_up:
-            if type(key.keycode) is list:
-                for code in key.keycode:
-                    self.up_keys.append((time(), code))
-            else:
-                self.up_keys.append((time(), key.keycode))
-
-    def remove_old(self, l):
-        toremove = []
-        for tup in l:
-            if time() - tup[0] > self.duration:
-                toremove.append(tup)
-        [l.remove(tup) for tup in toremove]
 
 
 class Mode:
@@ -263,11 +289,6 @@ def gg(exctype, value, traceback):
 
 
 # TODO remaining:
-#  depending on the current MODE(index), use a different animation
-#   0 is -> 000 100 110 111 and reverse... (takes .17 * 3, .56s, 1.02s to return to original position)
-#   1 is -> 000 101 111 010 000 ... takes 0.5*4, 2s to return to original
-#   2 is -> 000 101 111 010 000 ... takes 0.5*4, 2s to return to original
-#  implement hold binds (only one of the N keys will be triggered as "hold"; the rest will be in DOWN state...
 #  Create flags:
 #  flag to dump device capabilities, properly formatted and everything...
 #  flag for full blocking mode
