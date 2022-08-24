@@ -12,7 +12,10 @@ class Macros:
     use this command on Unix (look for sysrq in the handler field):
     cat /proc/bus/input/devices
     Please keep in mind that in order to create multiple modes for the same keyboard, a different class (with the same
-    KEYBOARD_NAME value) must be provided."""
+    KEYBOARD_NAME value) must be provided.
+    To create a custom controller, please take a look into the DefaultController class provided in main.py.
+    If you want to extend the function of the controller to more axis, you should override get_input_event_type.
+    (https://www.kernel.org/doc/html/v4.17/input/event-codes.html)"""
 
     """Name of the keyboard we're going to catch the input from."""
     KEYBOARD_NAME = "USB Keyboard"

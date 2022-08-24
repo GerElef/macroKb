@@ -5,8 +5,10 @@ Configure your own keyboard in `user_defined_binds.py`.
 
 Flags:
 ```
--h --help > Displays the manpage.
--d        > Dumps all useful keyboard data in STDOUT.
+-h, --help > 
+-d, --dump-data > Dumps all relevant device (denoted by 'keyboard' keyword) data capabilities to STDOUT.
+-l, --no-lights > Toggles light animation off.
+-v, --version > Current program version.
 ```
 
 ## DISCLAIMER:

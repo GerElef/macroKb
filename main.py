@@ -1,6 +1,9 @@
+import argparse
 import sys
 import multiprocessing as mp
 # noinspection PyUnresolvedReferences
+from collections.abc import Iterable
+
 import evdev as ev
 import threading
 from time import sleep, time
@@ -56,7 +59,10 @@ class Controller(ABC):
     def __init__(self):
         raise RuntimeError("Cannot instantiate abstract class!")
 
-    def execute(self, key):
+    def get_input_event_type(self) -> Tuple:
+        pass
+
+    def execute(self, key, device):
         pass
 
 
@@ -72,13 +78,13 @@ class DefaultController(Controller):
         self.duration = .06  # (60ms)
         self.mode = mode
 
-    def execute(self, key):
+    def get_input_event_type(self) -> Tuple:
+        return e.EV_KEY,
+
+    def execute(self, key, _):  # we will not be using the device, only passively reacting to events
         # remove old keys and add the new one
         self.__transfer_key_states()
         self.__add_to_lists(key)
-        print(self.down_keys)
-        print(self.hold_keys)
-        print(self.up_keys)
 
         if key.keystate == key.key_down:
             self.__handle_down()
@@ -129,19 +135,16 @@ class DefaultController(Controller):
 
     def __handle_down(self):
         do = self.mode.check_bind_down('/'.join(self.down_keys))
-        print("DN " + '/'.join(self.down_keys))
         if do:
             do.action()
 
     def __handle_hold(self):
         do = self.mode.check_bind_hold('/'.join(self.hold_keys))
-        print("HLD " + '/'.join(self.hold_keys))
         if do:
             do.action()
 
     def __handle_up(self):
         do = self.mode.check_bind_up('/'.join(self.up_keys))
-        print("UP " + '/'.join(self.up_keys))
         if do:
             do.action()
 
@@ -210,7 +213,7 @@ class Keyboard:
 
     def main(self):
         for event in self.dev.read_loop():
-            if event.type == e.EV_KEY:
+            if event.type in self.mode.controller.get_input_event_type():
                 key = categorize(event)
                 # handle switch_mode_key edge-case
                 if type(key.keycode) is not list:
@@ -219,7 +222,7 @@ class Keyboard:
                             self.advance_mode()
                         continue
 
-                self.mode.controller.execute(key)
+                self.mode.controller.execute(key, self.dev)
 
     def advance_mode(self):
         lm = len(self.modes)
@@ -288,19 +291,56 @@ def gg(exctype, value, traceback):
     exit(value)
 
 
+def dump_data():
+    devices = [ev.InputDevice(path) for path in ev.list_devices()]
+    for device in devices:
+        if "keyboard" in device.name.lower():
+            capabilities_dict = device.capabilities(verbose=True)
+            print(f"Device {device.name}\nPath:{device.path}")
+            for cdkey in capabilities_dict.keys():
+                if type(capabilities_dict[cdkey]) in (list, dict, set):
+                    print(f"\t{cdkey}")
+                    for v in capabilities_dict[cdkey]:
+                        print(f"\t\t{v}")
+                else:
+                    print(f"{cdkey} {capabilities_dict[cdkey]}")
+
+
+def parse_args():
+    PROGRAM_VERSION = "1.0.0"
+
+    # https://stackoverflow.com/questions/7427101/simple-argparse-example-wanted-1-argument-3-results
+    parser = argparse.ArgumentParser(description="Daemon for multiple macroinstruction keyboards.")
+    parser.add_argument("-d", "--dump-data", help="Dumps all relevant device (denoted by 'keyboard' keyword)"
+                                                  " data capabilities to STDOUT.", required=False, action="store_true")
+    parser.add_argument("-l", "--no-lights", help="Toggles light animation off.", required=False, action="store_true")
+    parser.add_argument("-v", "--version", help="Current program version.", required=False, action="store_true")
+    args = parser.parse_args().__dict__
+    if args["version"]:
+        print(f"macroKb {PROGRAM_VERSION}")
+        exit(0)
+
+    if args["dump_data"]:
+        dump_data()
+        exit(0)
+
+    if args["no_lights"]:
+        global __light_switch
+        __light_switch = False
+
+
 # TODO remaining:
 #  Create flags:
-#  flag to dump device capabilities, properly formatted and everything...
-#  flag for full blocking mode
-#  flag for "non-blocking" mode (it doesn't block input)
-#  from get_all_keyboard_devices & print(device.capabilities(verbose=True))
-#  toggleable write mode (create virtual UInput) with KEY_SYSRQ (PrtScr) (reserved button)
+#  flag for toggleable write mode (create virtual UInput) with KEY_SYSRQ (PrtScr) (reserved button)
 #   https://python-evdev.readthedocs.io/en/latest/tutorial.html#create-uinput-device-with-capabilities-of-another-device
 if __name__ == "__main__":
+    __light_switch = True
+
+    parse_args()
+
     sys.excepthook = gg
 
     keyboards = get_all_keyboard_devices()
-
     macromodes: Dict[str, List[Mode]] = {}
     for kbn in keyboards.keys():
         kbm = create_keyboard_mode(kbn)
@@ -310,7 +350,7 @@ if __name__ == "__main__":
     macroboards = []
     for mmk in macromodes.keys():
         for dev in keyboards[mmk]:
-            macroboards.append(Keyboard(InputDevice(dev), macromodes[mmk], play_the_lights=True))
+            macroboards.append(Keyboard(InputDevice(dev), macromodes[mmk], play_the_lights=__light_switch))
 
     # https://docs.python.org/3.8/library/multiprocessing.html#the-process-class
 
