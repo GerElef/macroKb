@@ -4,6 +4,7 @@ import multiprocessing as mp
 # noinspection PyUnresolvedReferences
 from collections.abc import Iterable
 
+# noinspection PyUnresolvedReferences
 import evdev as ev
 import threading
 from time import sleep, time
@@ -242,6 +243,7 @@ def play_light_anim(devve, interval):
         state = not state
 
 
+# noinspection PyUnresolvedReferences
 def create_keyboard_mode(keyboard_name):
     """Create all the applicable keyboard modes for a specific keyboard (name)."""
     kb_modes: Dict[str, List[Mode]] = {}
@@ -325,8 +327,8 @@ def parse_args():
         exit(0)
 
     if args["no_lights"]:
-        global __light_switch
-        __light_switch = False
+        global light_switch
+        light_switch = False
 
 
 # TODO remaining:
@@ -334,7 +336,7 @@ def parse_args():
 #  flag for toggleable write mode (create virtual UInput) with KEY_SYSRQ (PrtScr) (reserved button)
 #   https://python-evdev.readthedocs.io/en/latest/tutorial.html#create-uinput-device-with-capabilities-of-another-device
 if __name__ == "__main__":
-    __light_switch = True
+    light_switch = True
 
     parse_args()
 
@@ -350,7 +352,7 @@ if __name__ == "__main__":
     macroboards = []
     for mmk in macromodes.keys():
         for dev in keyboards[mmk]:
-            macroboards.append(Keyboard(InputDevice(dev), macromodes[mmk], play_the_lights=__light_switch))
+            macroboards.append(Keyboard(InputDevice(dev), macromodes[mmk], play_the_lights=light_switch))
 
     # https://docs.python.org/3.8/library/multiprocessing.html#the-process-class
 
