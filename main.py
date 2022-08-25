@@ -9,7 +9,7 @@ import evdev as ev
 import threading
 from time import sleep, time
 # noinspection PyUnresolvedReferences
-from evdev import InputDevice, categorize, ecodes as e
+from evdev import InputDevice, UInput, categorize, ecodes as e
 from abc import ABC
 from typing import Callable, Dict, Tuple, List, Any
 
@@ -201,14 +201,23 @@ class Mode:
 
 
 class Keyboard:
-    def __init__(self, dev1ce, modes: List[Mode], play_the_lights=True):
-        self.dev = dev1ce
+    def __init__(self, dev1ce_path, modes: List[Mode], play_the_lights=True, print_keys=False, exclusive=False):
+        self.dev = InputDevice(dev1ce_path)
+        self.dev_path = dev1ce_path
+
         self.modes = modes
         self.mode_index = 0
         self.mode = modes[self.mode_index]
-        self.switch_mode_key = "KEY_SCROLLLOCK"
-        self.dev.grab()
 
+        self.print_keys = print_keys  # cmd switch
+        self.exclusive = exclusive  # cmd switch
+        self.write_mode = False
+        self.virtual_keyboard: InputDevice = None
+
+        self.input_mode_key = "KEY_SYSRQ"
+        self.switch_mode_key = "KEY_SCROLLLOCK"
+
+        self.dev.grab()
         if play_the_lights:
             threading.Thread(target=play_light_anim, args=(self.dev, .334,)).start()
 
@@ -217,20 +226,53 @@ class Keyboard:
             if event.type in self.mode.controller.get_input_event_type():
                 key = categorize(event)
                 # handle switch_mode_key edge-case
-                if type(key.keycode) is not list:
-                    if key.keycode == self.switch_mode_key:
-                        if key.keystate == key.key_down:
-                            self.advance_mode()
-                        continue
+                if self.print_keys:
+                    print(key, file=sys.stderr)
+
+                # if we advanced mode, skip this turn
+                if self.advance_mode(key):
+                    continue
+
+                # if we toggled inputs, skip this turn
+                if self.toggle_inputs(key):
+                    continue
+
+                # if we're writing, do not execute any macros/binds
+                if self.write_mode:
+                    try:
+                        self.virtual_keyboard.write_event(event)
+                        self.virtual_keyboard.syn()
+                    except Exception as e:
+                        self.virtual_keyboard.close()
+                        self.write_mode = False
+                        print(f"Got unexpected exception on {self.virtual_keyboard}\n{e}")
+                    continue
 
                 self.mode.controller.execute(key, self.dev)
 
-    def advance_mode(self):
-        lm = len(self.modes)
-        self.mode_index += 1
-        if self.mode_index == lm:
-            self.mode_index = 0
-        self.mode = self.modes[self.mode_index]
+    def toggle_inputs(self, key):
+        if not self.exclusive and type(key.keycode) is not list:
+            if key.keycode == self.input_mode_key:
+                if key.keystate == key.key_down:
+                    self.write_mode = not self.write_mode
+                    if self.write_mode:
+                        self.virtual_keyboard = UInput.from_device(self.dev.path, name=f"V_{self.dev.name}")
+                    else:
+                        self.virtual_keyboard.close()
+                    return True
+        return False
+
+    def advance_mode(self, key):
+        if type(key.keycode) is not list:
+            if key.keycode == self.switch_mode_key:
+                if key.keystate == key.key_down:
+                    lm = len(self.modes)
+                    self.mode_index += 1
+                    if self.mode_index == lm:
+                        self.mode_index = 0
+                    self.mode = self.modes[self.mode_index]
+                    return True
+        return False
 
 
 def play_light_anim(devve, interval):
@@ -277,7 +319,7 @@ def get_all_keyboard_devices() -> Dict[str, List[str]]:
     devve = {}
     devices = [ev.InputDevice(path) for path in ev.list_devices()]
     for device in devices:
-        if "keyboard" in device.name.lower():
+        if "keyboard" in device.name.lower():  # exact match
             if device.name in devve:
                 devve[device.name].append(device.path)
             else:
@@ -289,9 +331,8 @@ def get_all_keyboard_devices() -> Dict[str, List[str]]:
 def gg(exctype, value, traceback):
     for p in mp.active_children():
         p.kill()
-    print(exctype, value, traceback.format_exc(), file=sys.stderr)
+    print(exctype, value, traceback, file=sys.stderr)
     exit(value)
-
 
 def dump_data():
     devices = [ev.InputDevice(path) for path in ev.list_devices()]
@@ -309,6 +350,7 @@ def dump_data():
 
 
 def parse_args():
+    global print_keys_switch, light_switch, exclusivity
     PROGRAM_VERSION = "1.0.0"
 
     # https://stackoverflow.com/questions/7427101/simple-argparse-example-wanted-1-argument-3-results
@@ -316,6 +358,10 @@ def parse_args():
     parser.add_argument("-d", "--dump-data", help="Dumps all relevant device (denoted by 'keyboard' keyword)"
                                                   " data capabilities to STDOUT.", required=False, action="store_true")
     parser.add_argument("-l", "--no-lights", help="Toggles light animation off.", required=False, action="store_true")
+    parser.add_argument("-p", "--print-keys", help="Prints all keypresses to STDERR for debugging. "
+                                                   "SECURITY RISK! This switch could leak your passwords if "
+                                                   "it's running as a daemon.", required=False, action="store_true")
+    parser.add_argument("-e", "--non-exclusive", help="Enables input toggle.", required=False, action="store_true")
     parser.add_argument("-v", "--version", help="Current program version.", required=False, action="store_true")
     args = parser.parse_args().__dict__
     if args["version"]:
@@ -327,16 +373,26 @@ def parse_args():
         exit(0)
 
     if args["no_lights"]:
-        global light_switch
         light_switch = False
+
+    if args["non_exclusive"]:
+        light_switch = False
+        exclusivity = False
+
+    if args["print_keys"]:
+        print_keys_switch = True
 
 
 # TODO remaining:
-#  Create flags:
-#  flag for toggleable write mode (create virtual UInput) with KEY_SYSRQ (PrtScr) (reserved button)
-#   https://python-evdev.readthedocs.io/en/latest/tutorial.html#create-uinput-device-with-capabilities-of-another-device
+#  Create flag for simulating mice as well (???)/ or some way to add a bind that SIMULATES a mouse axis movement
 if __name__ == "__main__":
+    # with UInput.from_device("/dev/input/event11", name="okayke-TEST") as vk:
+    #     vk.write(e.EV_KEY, e.KEY_H, 1)
+    #     vk.write(e.EV_KEY, e.KEY_H, 0)
+    #     vk.syn()
     light_switch = True
+    exclusivity = True
+    print_keys_switch = False
 
     parse_args()
 
@@ -351,8 +407,11 @@ if __name__ == "__main__":
 
     macroboards = []
     for mmk in macromodes.keys():
-        for dev in keyboards[mmk]:
-            macroboards.append(Keyboard(InputDevice(dev), macromodes[mmk], play_the_lights=light_switch))
+        for dev_path in keyboards[mmk]:
+            macroboards.append(Keyboard(dev_path, macromodes[mmk],
+                                        play_the_lights=light_switch,
+                                        print_keys=print_keys_switch,
+                                        exclusive=exclusivity))
 
     # https://docs.python.org/3.8/library/multiprocessing.html#the-process-class
 

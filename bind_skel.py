@@ -19,24 +19,28 @@ def run_as_user(*args, cwd_redirect: str = None):
     # thank god for this answer
     #  https://stackoverflow.com/questions/1770209/run-child-processes-as-different-user-from-a-long-running-python-process
     # cwd = current working directory, just fyi
-    # we can get current logged in user with os.getlogin()
-    logged_in_user, current_directory = (f"{os.getlogin()}", f"/home/{os.getlogin()}")
-    if cwd_redirect:
-        current_directory = cwd_redirect
+    # we can get current logged-in user with os.getlogin()
+    try:
+        logged_in_user, current_directory = (f"{os.getlogin()}", f"/home/{os.getlogin()}")
+        if cwd_redirect:
+            current_directory = cwd_redirect
 
-    pw_record = pwd.getpwnam(logged_in_user)
-    logged_in_user = pw_record.pw_name
-    user_home_dir = pw_record.pw_dir
-    user_uid = pw_record.pw_uid
-    user_gid = pw_record.pw_gid
-    env = os.environ.copy()
-    env['HOME'] = user_home_dir
-    env['LOGNAME'] = logged_in_user
-    env['PWD'] = current_directory
-    env['USER'] = logged_in_user
-    sp.Popen(
-        args, preexec_fn=__demote(user_uid, user_gid), cwd=current_directory, env=env
-    )
+        pw_record = pwd.getpwnam(logged_in_user)
+        logged_in_user = pw_record.pw_name
+        user_home_dir = pw_record.pw_dir
+        user_uid = pw_record.pw_uid
+        user_gid = pw_record.pw_gid
+        env = os.environ.copy()
+        env['HOME'] = user_home_dir
+        env['LOGNAME'] = logged_in_user
+        env['PWD'] = current_directory
+        env['USER'] = logged_in_user
+
+        sp.Popen(
+            args, preexec_fn=__demote(user_uid, user_gid), cwd=current_directory, env=env
+        )
+    except Exception as e:
+        print(f"When trying to run {args}\n\tgot exception {e}")
 
 
 def macro_class(cls):

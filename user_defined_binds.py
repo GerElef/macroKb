@@ -28,7 +28,8 @@ class Macros:
 
     """Macros to execute when KEY_UP is triggered."""
     MACROS_UP = {
-        ("KEY_GRAVE",): lambda: run_as_user("gnome-terminal")  # open processes THIS WAY! otherwise they will run as root
+        # open processes THIS WAY! otherwise they will run as root!!!
+        ("KEY_GRAVE",): lambda: run_as_user("gnome-terminal")
     }
 
     """Macros to execute when KEY_HOLD is triggered."""
