@@ -5,10 +5,20 @@ Configure your own keyboard in `user_defined_binds.py`.
 
 Flags:
 ```
--h, --help > 
--d, --dump-data > Dumps all relevant device (denoted by 'keyboard' keyword) data capabilities to STDOUT.
--l, --no-lights > Toggles light animation off.
--v, --version > Current program version.
+usage: main.py [-h] [-d] [-l] [-p] [-e] [-v]
+
+Daemon for multiple macroinstruction keyboards.
+
+options:
+  -h, --help           show this help message and exit
+  -d, --dump-data      Dumps all relevant device (denoted by 'keyboard' keyword) data
+                       capabilities to STDOUT.
+  -l, --no-lights      Toggles light animation off.
+  -p, --print-keys     Prints all keypresses to STDERR for debugging. SECURITY RISK!
+                       This switch could leak your passwords if it's running as a
+                       daemon.
+  -e, --non-exclusive  Enables input toggle.
+  -v, --version        Current program version.
 ```
 
 ## DISCLAIMER:
