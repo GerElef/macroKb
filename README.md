@@ -7,17 +7,14 @@ Flags:
 ```
 usage: main.py [-h] [-d] [-l] [-p] [-e] [-v]
 
-Daemon for multiple macroinstruction keyboards.
+Daemon for multiple macroinstruction keyboards. Switch modes with KEY_SCROLLLOCK.
 
 options:
   -h, --help           show this help message and exit
-  -d, --dump-data      Dumps all relevant device (denoted by 'keyboard' keyword) data
-                       capabilities to STDOUT.
+  -d, --dump-data      Dumps all relevant device (denoted by 'keyboard' keyword) data capabilities to STDOUT.
   -l, --no-lights      Toggles light animation off.
-  -p, --print-keys     Prints all keypresses to STDERR for debugging. SECURITY RISK!
-                       This switch could leak your passwords if it's running as a
-                       daemon.
-  -e, --non-exclusive  Enables input toggle.
+  -p, --print-keys     Prints all keypresses to STDERR for debugging. SECURITY RISK! This switch could leak your passwords if it's running as a daemon.
+  -e, --non-exclusive  Enables input toggle with KEY_SYSRQ.
   -v, --version        Current program version.
 ```
 

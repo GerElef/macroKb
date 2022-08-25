@@ -85,7 +85,8 @@ class DefaultController(Controller):
     def execute(self, key, _):  # we will not be using the device, only passively reacting to events
         # remove old keys and add the new one
         self.__transfer_key_states()
-        self.__add_to_lists(key)
+        self.__add_to_list(self.down_keys, self.down_keys_time, key, key.key_down)
+        self.__add_to_list(self.up_keys, self.up_keys_time, key, key.key_up)
 
         if key.keystate == key.key_down:
             self.__handle_down()
@@ -103,36 +104,30 @@ class DefaultController(Controller):
         self.hold_keys[:] = [k for k in self.hold_keys if k not in ic]
         self.__remove_old(self.up_keys, self.up_keys_time)
 
-    def __add_to_lists(self, key):
-        if key.keystate == key.key_down:
+    # noinspection PyMethodMayBeStatic
+    def __add_to_list(self, key_list, time_list, key, key_trigger_state):
+        if key.keystate == key_trigger_state:
             if type(key.keycode) is list:
                 for code in key.keycode:
-                    self.down_keys.append(code)
-                    self.down_keys_time.append(time())
+                    key_list.append(code)
+                    time_list.append(time())
             else:
-                self.down_keys.append(key.keycode)
-                self.down_keys_time.append(time())
-        if key.keystate == key.key_up:
-            if type(key.keycode) is list:
-                for code in key.keycode:
-                    self.up_keys.append(code)
-                    self.up_keys_time.append(time())
-            else:
-                self.up_keys.append(key.keycode)
-                self.up_keys_time.append(time())
+                key_list.append(key.keycode)
+                time_list.append(time())
 
-    def __remove_old(self, l, ll):
+    def __remove_old(self, time_list, name_list):
         tr: List = []  # to remove
-        tr_t: List = []  # to remove (name)
-        for n, t in zip(l, ll):
+        tn_t: List = []  # to remove (name)
+        for n, t in zip(time_list, name_list):
             if time() - t > self.duration:
                 tr.append(n)
-                tr_t.append(t)
+                tn_t.append(t)
 
-        [l.remove(t) for t in tr]
-        [ll.remove(n) for n in tr_t]
+        [time_list.remove(t) for t in tr]
+        [name_list.remove(n) for n in tn_t]
 
-        return tr, tr_t
+        # return removed
+        return tr, tn_t
 
     def __handle_down(self):
         do = self.mode.check_bind_down('/'.join(self.down_keys))
@@ -201,6 +196,9 @@ class Mode:
 
 
 class Keyboard:
+    INPUT_MODE_KEY = "KEY_SYSRQ"
+    SWITCH_MODE_KEY = "KEY_SCROLLLOCK"
+
     def __init__(self, dev1ce_path, modes: List[Mode], play_the_lights=True, print_keys=False, exclusive=False):
         self.dev = InputDevice(dev1ce_path)
         self.dev_path = dev1ce_path
@@ -214,9 +212,6 @@ class Keyboard:
         self.write_mode = False
         self.virtual_keyboard: InputDevice = None
 
-        self.input_mode_key = "KEY_SYSRQ"
-        self.switch_mode_key = "KEY_SCROLLLOCK"
-
         self.dev.grab()
         if play_the_lights:
             threading.Thread(target=play_light_anim, args=(self.dev, .334,)).start()
@@ -225,7 +220,7 @@ class Keyboard:
         for event in self.dev.read_loop():
             if event.type in self.mode.controller.get_input_event_type():
                 key = categorize(event)
-                # handle switch_mode_key edge-case
+
                 if self.print_keys:
                     print(key, file=sys.stderr)
 
@@ -252,7 +247,7 @@ class Keyboard:
 
     def toggle_inputs(self, key):
         if not self.exclusive and type(key.keycode) is not list:
-            if key.keycode == self.input_mode_key:
+            if key.keycode == Keyboard.INPUT_MODE_KEY:
                 if key.keystate == key.key_down:
                     self.write_mode = not self.write_mode
                     if self.write_mode:
@@ -264,7 +259,7 @@ class Keyboard:
 
     def advance_mode(self, key):
         if type(key.keycode) is not list:
-            if key.keycode == self.switch_mode_key:
+            if key.keycode == Keyboard.SWITCH_MODE_KEY:
                 if key.keystate == key.key_down:
                     lm = len(self.modes)
                     self.mode_index += 1
@@ -334,6 +329,7 @@ def gg(exctype, value, traceback):
     print(exctype, value, traceback, file=sys.stderr)
     exit(value)
 
+
 def dump_data():
     devices = [ev.InputDevice(path) for path in ev.list_devices()]
     for device in devices:
@@ -351,17 +347,19 @@ def dump_data():
 
 def parse_args():
     global print_keys_switch, light_switch, exclusivity
-    PROGRAM_VERSION = "1.0.0"
+    PROGRAM_VERSION = "1.2.0"
 
     # https://stackoverflow.com/questions/7427101/simple-argparse-example-wanted-1-argument-3-results
-    parser = argparse.ArgumentParser(description="Daemon for multiple macroinstruction keyboards.")
+    parser = argparse.ArgumentParser(description="Daemon for multiple macroinstruction keyboards.\n"
+                                                 f"Switch modes with {Keyboard.SWITCH_MODE_KEY}.")
     parser.add_argument("-d", "--dump-data", help="Dumps all relevant device (denoted by 'keyboard' keyword)"
                                                   " data capabilities to STDOUT.", required=False, action="store_true")
     parser.add_argument("-l", "--no-lights", help="Toggles light animation off.", required=False, action="store_true")
-    parser.add_argument("-p", "--print-keys", help="Prints all keypresses to STDERR for debugging. "
+    parser.add_argument("-p", "--print-keys", help="Prints all keypresses to STDERR for debugging.\n"
                                                    "SECURITY RISK! This switch could leak your passwords if "
                                                    "it's running as a daemon.", required=False, action="store_true")
-    parser.add_argument("-e", "--non-exclusive", help="Enables input toggle.", required=False, action="store_true")
+    parser.add_argument("-e", "--non-exclusive", help=f"Enables input toggle with {Keyboard.INPUT_MODE_KEY}.",
+                        required=False, action="store_true")
     parser.add_argument("-v", "--version", help="Current program version.", required=False, action="store_true")
     args = parser.parse_args().__dict__
     if args["version"]:
